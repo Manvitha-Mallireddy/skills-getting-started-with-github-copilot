@@ -14,31 +14,81 @@ document.addEventListener("DOMContentLoaded", () => {
       activitiesList.innerHTML = "";
 
       // Populate activities list
+      // Clear previous activity options to avoid duplicates
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
         const spotsLeft = details.max_participants - details.participants.length;
 
-        // Create participants list HTML
-        const participantsList = details.participants.length > 0
-          ? `
-            <div class="participants-section">
-              <p><strong>Current Participants:</strong></p>
-              <ul>
-                ${details.participants.map(email => `<li>${email}</li>`).join('')}
-              </ul>
-            </div>
-          `
-          : '<p><em>No participants yet - be the first to join!</em></p>';
+        // Build participants list element (DOM-based) so we can attach delete handlers
+        let participantsSection;
+        if (details.participants.length > 0) {
+          participantsSection = document.createElement('div');
+          participantsSection.className = 'participants-section';
 
+          const title = document.createElement('p');
+          title.innerHTML = '<strong>Current Participants:</strong>';
+          participantsSection.appendChild(title);
+
+          const ul = document.createElement('ul');
+          ul.className = 'participants-list';
+
+          details.participants.forEach(email => {
+            const li = document.createElement('li');
+            li.className = 'participant-item';
+
+            const span = document.createElement('span');
+            span.className = 'participant-email';
+            span.textContent = email;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'participant-delete';
+            btn.title = 'Unregister participant';
+            btn.innerHTML = '&#x2716;'; // heavy multiplication X
+
+            // Attach click handler to unregister participant
+            btn.addEventListener('click', async () => {
+              try {
+                const res = await fetch(`/activities/${encodeURIComponent(name)}/unregister?email=${encodeURIComponent(email)}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                  // Refresh activities to reflect changes
+                  fetchActivities();
+                } else {
+                  // show a simple alert on error (could be improved with UI message)
+                  alert(data.detail || data.message || 'Failed to unregister participant');
+                }
+              } catch (err) {
+                console.error('Error unregistering participant:', err);
+                alert('Failed to unregister participant. Please try again.');
+              }
+            });
+
+            li.appendChild(span);
+            li.appendChild(btn);
+            ul.appendChild(li);
+          });
+
+          participantsSection.appendChild(ul);
+        } else {
+          participantsSection = document.createElement('p');
+          participantsSection.className = 'no-participants';
+          participantsSection.innerHTML = '<em>No participants yet - be the first to join!</em>';
+        }
+
+        // Compose card content
         activityCard.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
-          ${participantsList}
         `;
+
+        activityCard.appendChild(participantsSection);
 
         activitiesList.appendChild(activityCard);
 
@@ -75,6 +125,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities so the newly signed-up participant appears immediately
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
